@@ -1,9 +1,8 @@
 package com.example.rmoa3;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
-
+import java.net.URI;
+import java.net.URISyntaxException;
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
 
@@ -15,57 +14,59 @@ import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 
-import org.java_websocket.WebSocket;
 import org.java_websocket.WebSocketImpl;
-import org.java_websocket.framing.Framedata;
-import org.java_websocket.handshake.ClientHandshake;
-import org.java_websocket.server.WebSocketServer;
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.drafts.Draft;
+import org.java_websocket.drafts.Draft_76;
+import org.java_websocket.handshake.ServerHandshake;
 
 
 public class MainActivity extends Activity {
 	
 	String TAG = "RMOA3";
+	private WebSocketClient cc;
+	private String uri = "ws://bot.ceccaldi.eu/control/";
 	
-	public class RemoteCtrlServer extends WebSocketServer {
+	public void startListeningToWS() {
+		try {
 
-		public RemoteCtrlServer( int port ) throws UnknownHostException {
-			super( new InetSocketAddress( port ) );
+			cc = new WebSocketClient(new URI( uri ), (Draft) new Draft_76() ) {
+
+				@Override
+				public void onMessage( String message ) {
+					Log.d(TAG, "got message: " + message + "\n" );
+					arduinoSend(message);
+				}
+
+				@Override
+				public void onOpen( ServerHandshake handshake ) {
+					Log.d(TAG, "You are connected to ChatServer: " + getURI() + "\n" );
+				}
+
+				@Override
+				public void onClose( int code, String reason, boolean remote ) {
+					Log.d(TAG, "You have been disconnected from: " + getURI() + "; Code: " + code + " " + reason + "\n" );
+					try {
+					    startWS();
+				    } catch (IOException e) {
+						
+					} catch (InterruptedException e) {
+						
+					}
+				}
+
+				@Override
+				public void onError( Exception ex ) {
+					Log.d(TAG, "Exception occured ...\n" + ex + "\n" );
+					//ex.printStackTrace();
+				}
+			};
+
+			cc.connect();
+		} catch ( URISyntaxException ex ) {
+			Log.d(TAG, uri + "is not a valid WebSocket URI\n" );
 		}
 
-		public RemoteCtrlServer( InetSocketAddress address ) {
-			super( address );
-		}
-
-		@Override
-		public void onOpen( WebSocket conn, ClientHandshake handshake ) {
-			Log.d(TAG, "new connection: " + handshake.getResourceDescriptor() );
-			Log.d(TAG, conn.getRemoteSocketAddress().getAddress().getHostAddress() + " entered the room!" );
-		}
-
-		@Override
-		public void onClose( WebSocket conn, int code, String reason, boolean remote ) {
-			Log.d(TAG, conn + " has left the room!" );
-		}
-
-		@Override
-		public void onMessage( WebSocket conn, String message ) {
-			arduinoSend(message);
-			Log.d(TAG, conn + ": " + message );
-		}
-
-		@Override
-		public void onFragment( WebSocket conn, Framedata fragment ) {
-			Log.d(TAG, "received fragment: " + fragment );
-		}
-
-		@Override
-		public void onError( WebSocket conn, Exception ex ) {
-			Log.d(TAG, "Error");
-			ex.printStackTrace();
-			if( conn != null ) {
-				// some errors like port binding failed may not be assignable to a specific websocket
-			}
-		}
 	}
 	
 	private String sToS(String s) {
@@ -140,9 +141,7 @@ public class MainActivity extends Activity {
 	
 	public void startWS() throws InterruptedException , IOException {
 		WebSocketImpl.DEBUG = true;
-		RemoteCtrlServer s = new RemoteCtrlServer( 8887 );
-		s.start();
-		Log.d(TAG, "ChatServer started on port: " + s.getPort() );
+		startListeningToWS();
 	}
 
 }
