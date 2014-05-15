@@ -3,12 +3,9 @@ package com.example.rmoa3;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import com.hoho.android.usbserial.driver.UsbSerialDriver;
-import com.hoho.android.usbserial.driver.UsbSerialProber;
+import org.shokai.firmata.ArduinoFirmata;
 
 import android.app.Activity;
-import android.content.Context;
-import android.hardware.usb.UsbManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -19,6 +16,8 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
 import org.java_websocket.drafts.Draft_76;
 import org.java_websocket.handshake.ServerHandshake;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 
 public class MainActivity extends Activity {
@@ -26,6 +25,7 @@ public class MainActivity extends Activity {
 	String TAG = "RMOA3";
 	private WebSocketClient cc;
 	private String uri = "ws://bot.ceccaldi.eu/control/";
+	private ArduinoFirmata arduino;
 	
 	public void startListeningToWS() {
 		try {
@@ -87,12 +87,20 @@ public class MainActivity extends Activity {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 	    super.onCreate(savedInstanceState);
+	    arduino = new ArduinoFirmata(this);
+	    try {
+	    	arduino.connect();
+	    } catch (IOException e) {
+	    	Log.d(TAG, "IOException caught for arduino.connect\n" );
+		} catch (InterruptedException e) {
+			Log.d(TAG, "InterruptedException caught for arduino.connect\n" );
+		}
 	    try {
 		    startWS();
 	    } catch (IOException e) {
-			
+	    	Log.d(TAG, "IOException caught\n" );
 		} catch (InterruptedException e) {
-			
+			Log.d(TAG, "InterruptedException caught\n" );
 		}
 	    setContentView(R.layout.fragment_main);
 	}
@@ -105,37 +113,35 @@ public class MainActivity extends Activity {
 	}
 	
 	public void arduinoSend(String message) {
-		message = sToS(message);
-		
-		// Get UsbManager from Android.
-		UsbManager manager1 = (UsbManager) getSystemService(Context.USB_SERVICE);
-
-		// Find the first available driver.
-		UsbSerialDriver driver1 = UsbSerialProber.acquire(manager1);
-
-		if (driver1 != null) {
-			try {
-				driver1.open();
-			} catch (IOException e1) {
-				e1.printStackTrace();
-			}
-			try {
-				driver1.setBaudRate(9600);
-
-				byte[] send = message.getBytes();
-				driver1.write(send, 1000);
-
-
-			} catch (IOException e) {
-				// Deal with error.
-			} finally {
-				try {
-					driver1.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			} 
+		int speed = 0;
+		int direction = 0;
+		int right = 0;
+		int left = 0;
+		try {
+			JSONObject jObject = new JSONObject(message);
+			speed = jObject.getInt("speed");
+			direction = jObject.getInt("dir");
+			Log.d(TAG, "Speed: " + speed + "\n" );
+			Log.d(TAG, "Direction: " + direction + "\n" );
+		} catch (JSONException e) {
+			Log.d(TAG, "JSON" + message + " could not be parsed\n" );
+			e.printStackTrace();
 		}
+		
+		if(speed > 0 && speed <= 255) {
+			left = right = speed;
+		}
+		
+		if(direction > 100 && direction <= 200) { //turn right
+			right = right - ((direction - 100) * right / 100);
+		} else if(direction < 100 && direction >= 0) { //turn left
+			left = left - ((100 - direction) * left / 100);
+		}
+
+		Log.d(TAG, "Left: " + left + "\n" );
+		Log.d(TAG, "Right: " + right + "\n" );
+		arduino.analogWrite(11, left);
+		arduino.analogWrite(3, right);
 	}
 
 	
